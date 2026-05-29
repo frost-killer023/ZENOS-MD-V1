@@ -22,15 +22,18 @@ process.on('uncaughtException', (err) => console.error(chalk.red(`[CRASH] Uncaug
 process.on('unhandledRejection', (reason) => console.error(chalk.red(`[CRASH] Unhandled Rejection`)));
 
 async function startZenosBot() {
-    // Utilisation de la session personnalisée demandée
     const { state, saveCreds } = await useMultiFileAuthState(path.join(__dirname, 'session_zenos'));
 
     console.log(chalk.blue(`[BOT] Initialisation de la connexion WhatsApp...`));
 
+    // Version réseau fixe et stable (Tableau de 3 entiers requis par Baileys)
+    const WHATSAPP_VERSION =; 
+
     const sock = makeWASocket({
+        version: WHATSAPP_VERSION,
         auth: state,
         logger: pino({ level: 'silent' }),
-        printQRInTerminal: false, // Désactivé pour laisser la main à qrcode-terminal
+        printQRInTerminal: false, // Laissé à false pour que notre qrcode.generate s'en occupe
         browser: ["ZENOS-MD-V1", "Chrome", "1.0.0"],
         syncFullHistory: false
     });
@@ -40,7 +43,7 @@ async function startZenosBot() {
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
-        // Génération propre avec l'affichage compact { small: true } dans Termux
+        // Génération du QR Code compact { small: true }
         if (qr) {
             console.log(chalk.yellow("\n--- SCANNEZ LE QR CODE ---"));
             qrcode.generate(qr, { small: true });
@@ -56,7 +59,6 @@ async function startZenosBot() {
         } else if (connection === 'open') {
             console.log(chalk.green(`\n[SUCCÈS] ZENOS-MD-V1 connecté avec succès !`));
             
-            // Notification stylisée et automatique au propriétaire
             if (config.OWNER_NUMBER) {
                 try {
                     const myJid = `${config.OWNER_NUMBER}@s.whatsapp.net`;
@@ -74,7 +76,6 @@ async function startZenosBot() {
         }
     });
 
-    // Gestion centralisée des événements via le Handler modulaire
     sock.ev.on('messages.upsert', async (chatUpdate) => {
         try {
             if (chatUpdate.type !== 'notify') return;
