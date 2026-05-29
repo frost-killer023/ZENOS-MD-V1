@@ -1,7 +1,7 @@
 {
   "name": "zenos-md-v1",
   "version": "1.0.0",
-  "description": "WhatsApp Bot moderne et stable en Node.js avec Baileys",
+  "description": "WhatsApp Bot avec QR Code sur page Web",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
@@ -17,7 +17,7 @@
     "moment-timezone": "^0.5.47",
     "node-fetch": "^2.7.0",
     "pino": "^9.6.0",
-    "qrcode-terminal": "^0.12.0"
+    "qrcode": "^1.5.4"
   },
   "engines": {
     "node": ">=20.0.0"
