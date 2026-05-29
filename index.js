@@ -1,91 +1,74 @@
-const { 
-    default: makeWASocket, 
-    useMultiFileAuthState, 
-    DisconnectReason, 
-    Browsers 
-} = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
-const express = require('express');
-const chalk = require('chalk');
-const path = require('path');
-const config = require('./config/config');
-const { handleMessage } = require('./events/messageHandler');
 
-// Serveur Express Minimal local
-const app = express();
-app.get('/', (req, res) => res.send('ZENOS-MD-V1 ONLINE'));
-app.listen(config.PORT, () => console.log(chalk.green(`[SERVER] Serveur web actif sur le port ${config.PORT}`)));
-
-// Système Anti-Crash Global Professionnel
-process.on('uncaughtException', (err) => console.error(chalk.red(`[CRASH] Uncaught Exception: ${err.message}`)));
-process.on('unhandledRejection', (reason) => console.error(chalk.red(`[CRASH] Unhandled Rejection`)));
-
-async function startZenosBot() {
-    const { state, saveCreds } = await useMultiFileAuthState(path.join(__dirname, 'session_zenos'));
-
-    console.log(chalk.blue(`[BOT] Initialisation de la connexion WhatsApp...`));
-
-    // Version réseau fixe et stable (Tableau de 3 entiers requis par Baileys)
-    const WHATSAPP_VERSION =; 
-
+async function startBot() {
+    const { state, saveCreds } = await useMultiFileAuthState('session_zenos');
+    
     const sock = makeWASocket({
-        version: WHATSAPP_VERSION,
-        auth: state,
         logger: pino({ level: 'silent' }),
-        printQRInTerminal: false, // Laissé à false pour que notre qrcode.generate s'en occupe
-        browser: ["ZENOS-MD-V1", "Chrome", "1.0.0"],
-        syncFullHistory: false
+        auth: state,
+        browser: ["ZENOS-MD-V1", "Chrome", "1.0.0"]
+    });
+
+    sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
+        
+        if (qr) {
+            console.log("\n--- SCANNEZ LE QR CODE ---");
+            qrcode.generate(qr, { small: true });
+        }
+
+        if (connection === 'open') {
+            console.log("ZENOS-MD-V1 est en ligne !");
+            
+            // Confirmation automatique en DM
+            const myNumber = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+            const message = `╭───〔 🤖 zenos 𝘽𝙊𝙏 〕───⬣\n` +
+                            `│ ߷ *Etat* ➜ Connecté ✅\n` +
+                            `│ ߷ *Mode* ➜ Public\n` +
+                            `│ ߷ *Statut* ➜ Opérationnel\n` +
+                            `│ ߷ *Développeur*➜ ANOS\n` +
+                            `╰──────────────⬣`;
+            await sock.sendMessage(myNumber, { text: message });
+        }
+
+        if (connection === 'close') {
+            const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            if (shouldReconnect) {
+                console.log("Reconnexion en cours...");
+                setTimeout(startBot, 5000);
+            }
+        }
     });
 
     sock.ev.on('creds.update', saveCreds);
 
-    sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect, qr } = update;
+    // Système de gestion de tes commandes
+    sock.ev.on('messages.upsert', async (m) => {
+        const msg = m.messages[0];
+        if (!msg.message || msg.key.fromMe) return;
 
-        // Génération du QR Code compact { small: true }
-        if (qr) {
-            console.log(chalk.yellow("\n--- SCANNEZ LE QR CODE ---"));
-            qrcode.generate(qr, { small: true });
-            console.log(chalk.yellow("--------------------------\n"));
-        }
+        const body = (msg.message.conversation || msg.message.extendedTextMessage?.text || "").trim();
+        const from = msg.key.remoteJid;
+        const command = body.split(' ')[0].toLowerCase();
 
-        if (connection === 'close') {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log(chalk.red(`[CONNEXION] Fermée. Reconnexion automatique : ${shouldReconnect}`));
-            if (shouldReconnect) {
-                setTimeout(() => startZenosBot(), 5000);
-            }
-        } else if (connection === 'open') {
-            console.log(chalk.green(`\n[SUCCÈS] ZENOS-MD-V1 connecté avec succès !`));
+        // Ajoute tes commandes ici
+        switch (command) {
+            case '.ping':
+                await sock.sendMessage(from, { text: 'Pong! 🏓 Bot actif.' });
+                break;
             
-            if (config.OWNER_NUMBER) {
-                try {
-                    const myJid = `${config.OWNER_NUMBER}@s.whatsapp.net`;
-                    const welcomeMessage = `╭───〔 🤖 zenos 𝘽𝙊𝙏 〕───⬣\n` +
-                                           `│ ߷ *Etat* ➜ Connecté ✅\n` +
-                                           `│ ߷ *Préfixe* ➜ ${config.PREFIX}\n` +
-                                           `│ ߷ *Version* ➜ ${config.VERSION}\n` +
-                                           `│ ߷ *Mode* ➜ Privé Strict 🔒\n` +
-                                           `╰──────────────⬣`;
-                    await sock.sendMessage(myJid, { text: welcomeMessage });
-                } catch (e) {
-                    console.error(chalk.yellow("[ATTENTION] Impossible d'envoyer le message de démarrage."));
-                }
-            }
-        }
-    });
+            case '.menu':
+                await sock.sendMessage(from, { text: 'Voici tes commandes disponibles...' });
+                break;
 
-    sock.ev.on('messages.upsert', async (chatUpdate) => {
-        try {
-            if (chatUpdate.type !== 'notify') return;
-            const msg = chatUpdate.messages;
-            if (!msg.message) return;
-            await handleMessage(sock, msg);
-        } catch (err) {
-            console.error(chalk.red('[ERROR UPSERT] '), err);
+            // Ajoute tes nouvelles commandes ci-dessous
+            // case '.test':
+            //     await sock.sendMessage(from, { text: 'Commande ajoutée !' });
+            //     break;
         }
     });
 }
 
-startZenosBot();
+startBot();
