@@ -6,16 +6,54 @@ const {
     Browsers 
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
-const qrcode = require('qrcode-terminal');
+const QRCode = require('qrcode');
 const express = require('express');
 const chalk = require('chalk');
 const path = require('path');
 const config = require('./config/config');
 const { handleMessage } = require('./events/messageHandler');
 
-// Serveur Express Obligatoire pour Render
+let latestQrCode = null;
+let isBotConnected = false;
+
+// Serveur Express avec interface Web dynamique
 const app = express();
-app.get('/', (req, res) => res.send('ZENOS-MD-V1 ONLINE'));
+app.get('/', (req, res) => {
+    if (isBotConnected) {
+        res.send(`
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>body{background:#111;color:#fff;text-align:center;font-family:sans-serif;padding-top:50px;} .status{color:#00ffcc;font-size:24px;font-weight:bold;}</style>
+            <h1>⚡ ZENOS-MD-V1 ⚡</h1>
+            <p class="status">🟢 BOT EN LIGNE ET ACTIF</p>
+            <p>Seul le propriétaire peut utiliser les commandes en mode privé.</p>
+        `);
+    } else if (latestQrCode) {
+        QRCode.toDataURL(latestQrCode, (err, url) => {
+            if (err) return res.send('Erreur de génération du QR Code.');
+            res.send(`
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <style>body{background:#111;color:#fff;text-align:center;font-family:sans-serif;padding:20px;} img{background:#fff;padding:10px;border-radius:10px;box-shadow:0 0 15px rgba(255,255,255,0.2);margin-top:20px;} .refresh{color:#aaa;font-size:12px;}</style>
+                <h1>⚡ ZENOS-MD-V1 ⚡</h1>
+                <p>Scannez ce QR Code avec votre WhatsApp pour connecter le bot :</p>
+                <img src="${url}" alt="QR Code WhatsApp"><br><br>
+                <p class="refresh">La page s'actualise automatiquement toutes les 15 secondes.</p>
+                <script>setTimeout(() => { location.reload(); }, 15000);</script>
+            `);
+        });
+    } else {
+        res.send(`
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>body{background:#111;color:#fff;text-align:center;font-family:sans-serif;padding-top:50px;}</style>
+            <h1>⚡ ZENOS-MD-V1 ⚡</h1>
+            <p>🔄 Initialisation de Baileys... Veuillez patienter et rafraîchir la page dans quelques instants.</p>
+            <script>setTimeout(() => { location.reload(); }, 5000);</script>
+        `);
+    }
+});
+
 app.listen(config.PORT, () => console.log(chalk.green(`[SERVER] Serveur web actif sur le port ${config.PORT}`)));
 
 // Anti-Crash
@@ -26,12 +64,10 @@ async function startZenosBot() {
     const { state, saveCreds } = await useMultiFileAuthState(path.join(__dirname, 'session'));
     const { version } = await fetchLatestBaileysVersion();
 
-    console.log(chalk.blue(`[BOT] Initialisation du système QR Code...`));
-
     const sock = makeWASocket({
         auth: state,
         logger: pino({ level: 'silent' }),
-        printQRInTerminal: false, // On gère l'affichage nous-mêmes manuellement ci-dessous pour éviter le bug
+        printQRInTerminal: false,
         browser: Browsers.macOS('Desktop'),
         syncFullHistory: false
     });
@@ -41,23 +77,22 @@ async function startZenosBot() {
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
-        // Génération forcée et propre du QR Code dans les logs Render
         if (qr) {
-            console.log(chalk.yellow('\n--- [ QR CODE DU BOT ZENOS ] ---'));
-            qrcode.generate(qr, { small: true });
-            console.log(chalk.yellow('--------------------------------\n'));
+            latestQrCode = qr; // Sauvegarde du QR pour l'affichage Web
         }
 
         if (connection === 'close') {
+            isBotConnected = false;
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log(chalk.red(`[CONNEXION] Relance automatique de la tentative de connexion...`));
             if (shouldReconnect) startZenosBot();
         } else if (connection === 'open') {
-            console.log(chalk.green(`\n[SUCCÈS] ${config.BOT_NAME} est connecté !`));
+            latestQrCode = null;
+            isBotConnected = true;
+            console.log(chalk.green(`\n[SUCCÈS] connecté !`));
             if (config.OWNER_NUMBER) {
                 try {
                     await sock.sendMessage(`${config.OWNER_NUMBER}@s.whatsapp.net`, { 
-                        text: `✨ *${config.BOT_NAME}* est connecté avec succès par QR Code !` 
+                        text: `✨ *${config.BOT_NAME}* est maintenant connecté via l'interface Web !` 
                     });
                 } catch (e) {}
             }
@@ -74,4 +109,4 @@ async function startZenosBot() {
     });
 }
 
-startZenosBot();
+startZenosBot();                    
