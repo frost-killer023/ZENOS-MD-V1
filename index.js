@@ -12,11 +12,11 @@ const path = require('path');
 const config = require('./config/config');
 const { handleMessage } = require('./events/messageHandler');
 
-// Serveur Express pour Railway
+// Serveur Express local minimal
 const app = express();
-app.get('/', (req, res) => res.send('ZENOS-MD-V1 ONLINE'));
+app.get('/', (req, res) => res.send('ZENOS-MD-V1 ONLINE (TERMUX)'));
 app.listen(config.PORT, () => {
-    console.log(chalk.green(`[SERVER] Port d'écoute Railway actif : ${config.PORT}`));
+    console.log(chalk.green(`[SERVER] Serveur web local actif sur le port ${config.PORT}`));
     startZenosBot();
 });
 
@@ -27,17 +27,17 @@ process.on('unhandledRejection', (reason) => console.error(chalk.red(`[CRASH] Re
 async function startZenosBot() {
     const { state, saveCreds } = await useMultiFileAuthState(path.join(__dirname, 'session'));
 
-    console.log(chalk.blue(`[BOT] Initialisation du protocole avec contournement du bug 405...`));
+    console.log(chalk.blue(`[BOT] Initialisation du protocole WhatsApp sur Termux...`));
 
-    // Force la dernière version réseau valide connue pour valider le protocole WhatsApp Web 2026
-    const WHATSAPP_VERSION = [2, 3000, 1037641644]; 
+    // Force la version réseau valide pour valider la poignée de main initiale
+    const WHATSAPP_VERSION = [2, 3000, 1015901307]; 
 
     const sock = makeWASocket({
-        version: WHATSAPP_VERSION, // <-- RÈGLE L'ERREUR 405 définitivement
+        version: WHATSAPP_VERSION, 
         auth: state,
         logger: pino({ level: 'silent' }),
-        printQRInTerminal: false, 
-        browser: Browsers.ubuntu('Chrome'),
+        printQRInTerminal: false, // On utilise notre propre convertisseur stable
+        browser: Browsers.ubuntu('Chrome'), // Évite le flag d'activité suspecte de WhatsApp
         syncFullHistory: false
     });
 
@@ -46,40 +46,33 @@ async function startZenosBot() {
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
-        // Génération asynchrone stable du QR Code dans les logs
+        // Rendu immédiat et natif du QR Code sur Termux
         if (qr) {
-            console.log(chalk.cyan('\n╔════════════════════════════════════════════╗'));
-            console.log(chalk.cyan('║      🤖 FLASH SCAN - ZENOS-MD-V1 🤖        ║'));
-            console.log(chalk.cyan('╚════════════════════════════════════════════╝\n'));
-            
+            console.log(chalk.yellow('\n🤖 >>> SCANNEZ LE QR CODE CI-DESSOUS <<< 🤖\n'));
             try {
                 const qrText = await QRCode.toString(qr, { type: 'terminal', small: true });
                 console.log(qrText);
             } catch (err) {
                 console.error(chalk.red("[ERREUR] Impossible de dessiner le QR :"), err);
             }
-            
-            console.log(chalk.cyan('\n──────────────────────────────────────────────'));
+            console.log(chalk.yellow('\n-----------------------------------------\n'));
         }
 
         if (connection === 'close') {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
             
-            console.log(chalk.red(`[BOT] Connexion fermée (Code: ${statusCode || 'Inconnu'}).`));
-            
+            console.log(chalk.red(`[BOT] Connexion fermée (Code: ${statusCode}).`));
             if (shouldReconnect) {
-                console.log(chalk.yellow('[BOT] Pause protocolaire... Reconnexion dans 10 secondes.'));
-                setTimeout(() => {
-                    startZenosBot();
-                }, 10000);
+                console.log(chalk.yellow('[BOT] Relance de la liaison réseau dans 5 secondes...'));
+                setTimeout(() => startZenosBot(), 5000);
             }
         } else if (connection === 'open') {
-            console.log(chalk.green(`\n✨ [SUCCÈS] ${config.BOT_NAME} est connecté ! ✨`));
+            console.log(chalk.green(`\n✨ [SUCCÈS] ${config.BOT_NAME} est en ligne sur votre appareil mobile ! ✨`));
             if (config.OWNER_NUMBER) {
                 try {
                     await sock.sendMessage(`${config.OWNER_NUMBER}@s.whatsapp.net`, { 
-                        text: `✨ *${config.BOT_NAME}* est connecté avec succès sur Railway !` 
+                        text: `✨ *${config.BOT_NAME}* est maintenant connecté via Termux !` 
                     });
                 } catch (e) {}
             }
