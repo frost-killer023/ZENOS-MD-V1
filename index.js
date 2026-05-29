@@ -12,7 +12,7 @@ const path = require('path');
 const config = require('./config/config');
 const { handleMessage } = require('./events/messageHandler');
 
-// Serveur Express requis pour la validation du port Railway
+// Serveur Express Minimal obligatoire pour Railway
 const app = express();
 app.get('/', (req, res) => res.send('ZENOS-MD-V1 ONLINE'));
 app.listen(config.PORT, () => {
@@ -25,13 +25,16 @@ process.on('uncaughtException', (err) => console.error(chalk.red(`[CRASH] Except
 process.on('unhandledRejection', (reason) => console.error(chalk.red(`[CRASH] Rejection`)));
 
 async function startZenosBot() {
+    // Initialisation du dossier de session
     const { state, saveCreds } = await useMultiFileAuthState(path.join(__dirname, 'session'));
+
+    console.log(chalk.blue(`[BOT] Initialisation du protocole de sécurité WhatsApp...`));
 
     const sock = makeWASocket({
         auth: state,
         logger: pino({ level: 'silent' }),
-        printQRInTerminal: false,
-        browser: Browsers.ubuntu('Chrome'), // Plus stable sur l'infrastructure Railway
+        printQRInTerminal: false, // Forcé à false pour éviter le bug natif de Baileys
+        browser: Browsers.ubuntu('Chrome'),
         syncFullHistory: false
     });
 
@@ -40,26 +43,40 @@ async function startZenosBot() {
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
+        // Interception asynchrone et affichage forcé du QR Code
         if (qr) {
-            console.log(chalk.yellow('\n🤖 >>> SCANNEZ LE QR CODE CI-DESSOUS <<< 🤖\n'));
+            console.log(chalk.cyan('\n╔════════════════════════════════════════════╗'));
+            console.log(chalk.cyan('║      🤖 FLASH SCAN - ZENOS-MD-V1 🤖        ║'));
+            console.log(chalk.cyan('╚════════════════════════════════════════════╝\n'));
+            
             try {
-                // Génération des blocs parfaits pour le terminal mobile
-                const qrTerminal = await QRCode.toString(qr, { type: 'terminal', small: true });
-                console.log(qrTerminal);
+                // Rendu en mode terminal pur avec blocs contrastés (small: true)
+                const qrText = await QRCode.toString(qr, { type: 'terminal', small: true });
+                console.log(qrText);
             } catch (err) {
-                console.error(chalk.red("[ERREUR] Échec du rendu QR :"), err);
+                console.error(chalk.red("[ERREUR] Impossible de dessiner le QR Code :"), err);
             }
-            console.log(chalk.yellow('\n-----------------------------------------\n'));
+            
+            console.log(chalk.cyan('\n──────────────────────────────────────────────'));
         }
 
         if (connection === 'close') {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            const statusCode = lastDisconnect?.error?.output?.statusCode;
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+            
+            console.log(chalk.red(`[BOT] Connexion fermée (Code: ${statusCode}).`));
+            
             if (shouldReconnect) {
-                console.log(chalk.yellow('[BOT] Reconnexion en cours...'));
-                setTimeout(() => startZenosBot(), 3000);
+                // Temporisation de 6 secondes pour casser la boucle de crash que vous subissiez
+                console.log(chalk.yellow('[BOT] Pause de sécurité... Reconnexion dans 6 secondes.'));
+                setTimeout(() => {
+                    startZenosBot();
+                }, 6000);
+            } else {
+                console.log(chalk.bgRed.white(' [ERREUR FATALE] Déconnecté de WhatsApp. Veuillez vider le dossier session et relancer. '));
             }
         } else if (connection === 'open') {
-            console.log(chalk.green(`\n[SUCCÈS] ${config.BOT_NAME} est connecté !`));
+            console.log(chalk.green(`\n✨ [SUCCÈS] ${config.BOT_NAME} est connecté ! ✨`));
             if (config.OWNER_NUMBER) {
                 try {
                     await sock.sendMessage(`${config.OWNER_NUMBER}@s.whatsapp.net`, { 
