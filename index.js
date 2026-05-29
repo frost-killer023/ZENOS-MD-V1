@@ -12,7 +12,6 @@ const path = require('path');
 const config = require('./config/config');
 const { handleMessage } = require('./events/messageHandler');
 
-// Serveur Express local minimal
 const app = express();
 app.get('/', (req, res) => res.send('ZENOS-MD-V1 ONLINE (TERMUX)'));
 app.listen(config.PORT, () => {
@@ -20,7 +19,6 @@ app.listen(config.PORT, () => {
     startZenosBot();
 });
 
-// Système Anti-Crash Global
 process.on('uncaughtException', (err) => console.error(chalk.red(`[CRASH] Exception: ${err.message}`)));
 process.on('unhandledRejection', (reason) => console.error(chalk.red(`[CRASH] Rejection`)));
 
@@ -29,15 +27,15 @@ async function startZenosBot() {
 
     console.log(chalk.blue(`[BOT] Initialisation du protocole WhatsApp sur Termux...`));
 
-    // Force la version réseau valide pour valider la poignée de main initiale
-    const WHATSAPP_VERSION = [2, 3000, 1015901307]; 
+    // Correction de la version réseau stable pour Baileys
+    const WHATSAPP_VERSION =; 
 
     const sock = makeWASocket({
         version: WHATSAPP_VERSION, 
         auth: state,
         logger: pino({ level: 'silent' }),
-        printQRInTerminal: false, // On utilise notre propre convertisseur stable
-        browser: Browsers.ubuntu('Chrome'), // Évite le flag d'activité suspecte de WhatsApp
+        printQRInTerminal: false, 
+        browser: Browsers.ubuntu('Chrome'), 
         syncFullHistory: false
     });
 
@@ -46,7 +44,6 @@ async function startZenosBot() {
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
-        // Rendu immédiat et natif du QR Code sur Termux
         if (qr) {
             console.log(chalk.yellow('\n🤖 >>> SCANNEZ LE QR CODE CI-DESSOUS <<< 🤖\n'));
             try {
@@ -68,7 +65,7 @@ async function startZenosBot() {
                 setTimeout(() => startZenosBot(), 5000);
             }
         } else if (connection === 'open') {
-            console.log(chalk.green(`\n✨ [SUCCÈS] ${config.BOT_NAME} est en ligne sur votre appareil mobile ! ✨`));
+            console.log(chalk.green(`\n✨ [SUCCÈS] ${config.BOT_NAME} est en ligne ! ✨`));
             if (config.OWNER_NUMBER) {
                 try {
                     await sock.sendMessage(`${config.OWNER_NUMBER}@s.whatsapp.net`, { 
@@ -87,4 +84,4 @@ async function startZenosBot() {
             await handleMessage(sock, msg);
         } catch (err) {}
     });
-}
+            }
