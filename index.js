@@ -18,6 +18,7 @@ let isBotConnected = false;
 
 // Serveur Express avec interface Web dynamique
 const app = express();
+
 app.get('/', (req, res) => {
     if (isBotConnected) {
         res.send(`
@@ -34,12 +35,12 @@ app.get('/', (req, res) => {
             res.send(`
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <style>body{background:#111;color:#fff;text-align:center;font-family:sans-serif;padding:20px;} img{background:#fff;padding:10px;border-radius:10px;box-shadow:0 0 15px rgba(255,255,255,0.2);margin-top:20px;} .refresh{color:#aaa;font-size:12px;}</style>
+                <style>body{background:#111;color:#fff;text-align:center;font-family:sans-serif;padding:20px;} img{background:#fff;padding:10px;border-radius:10px;box-shadow:0 0 15px rgba(255,255,255,0.2);margin-top:20px;} .refresh{color:#aaa;font-size:14px;}</style>
                 <h1>⚡ ZENOS-MD-V1 ⚡</h1>
                 <p>Scannez ce QR Code avec votre WhatsApp pour connecter le bot :</p>
                 <img src="${url}" alt="QR Code WhatsApp"><br><br>
-                <p class="refresh">La page s'actualise automatiquement toutes les 15 secondes.</p>
-                <script>setTimeout(() => { location.reload(); }, 15000);</script>
+                <p class="refresh">🔄 La page s'actualise automatiquement toutes les 10 secondes pour maintenir le QR valide.</p>
+                <script>setTimeout(() => { location.reload(); }, 10000);</script>
             `);
         });
     } else {
@@ -48,15 +49,22 @@ app.get('/', (req, res) => {
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <style>body{background:#111;color:#fff;text-align:center;font-family:sans-serif;padding-top:50px;}</style>
             <h1>⚡ ZENOS-MD-V1 ⚡</h1>
-            <p>🔄 Initialisation de Baileys... Veuillez patienter et rafraîchir la page dans quelques instants.</p>
+            <p>🔄 Génération du QR Code en cours... La page va s'actualiser d'ici 5 secondes.</p>
             <script>setTimeout(() => { location.reload(); }, 5000);</script>
         `);
     }
 });
 
-app.listen(config.PORT, () => console.log(chalk.green(`[SERVER] Serveur web actif sur le port ${config.PORT}`)));
+// Lancement immédiat du serveur pour ne rater aucun événement
+app.listen(config.PORT, () => {
+    console.log(chalk.green(`[SERVER] Serveur web actif sur le port ${config.PORT}`));
+    // On lance le bot JUSTE APRÈS que le serveur web soit prêt
+    setTimeout(() => {
+        startZenosBot();
+    }, 2000);
+});
 
-// Anti-Crash
+// Anti-Crash Global
 process.on('uncaughtException', (err) => console.error(chalk.red(`[CRASH] Uncaught Exception: ${err.message}`)));
 process.on('unhandledRejection', (reason, promise) => console.error(chalk.red(`[CRASH] Unhandled Rejection`)));
 
@@ -78,21 +86,26 @@ async function startZenosBot() {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-            latestQrCode = qr; // Sauvegarde du QR pour l'affichage Web
+            latestQrCode = qr; // Capture directe du QR Code
+            console.log(chalk.yellow('[BOT] Nouveau QR Code intercepté et disponible sur le lien web.'));
         }
 
         if (connection === 'close') {
             isBotConnected = false;
+            latestQrCode = null;
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            if (shouldReconnect) startZenosBot();
+            if (shouldReconnect) {
+                console.log(chalk.red('[BOT] Connexion perdue, tentative de reconnexion...'));
+                setTimeout(() => startZenosBot(), 3000); // Laisse du temps au système avant de relancer
+            }
         } else if (connection === 'open') {
             latestQrCode = null;
             isBotConnected = true;
-            console.log(chalk.green(`\n[SUCCÈS] connecté !`));
+            console.log(chalk.green(`[SUCCÈS] Connecté avec succès !`));
             if (config.OWNER_NUMBER) {
                 try {
                     await sock.sendMessage(`${config.OWNER_NUMBER}@s.whatsapp.net`, { 
-                        text: `✨ *${config.BOT_NAME}* est maintenant connecté via l'interface Web !` 
+                        text: `✨ *${config.BOT_NAME}* est maintenant connecté et opérationnel !` 
                     });
                 } catch (e) {}
             }
@@ -108,5 +121,3 @@ async function startZenosBot() {
         } catch (err) {}
     });
 }
-
-startZenosBot();                    
